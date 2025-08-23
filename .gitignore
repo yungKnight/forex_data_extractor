@@ -1,0 +1,4 @@
+knr/
+__pycache__/
+*.csv
+*.json
