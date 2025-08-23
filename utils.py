@@ -75,11 +75,11 @@ def parse_date_string(date_str: str) -> Optional[datetime]:
         datetime or None: Parsed datetime object, or None if parsing fails
     """
     date_formats = [
-        '%b %d, %Y',     # Sep 30, 2024
-        '%B %d, %Y',     # September 30, 2024
-        '%Y-%m-%d',      # 2024-09-30
-        '%m/%d/%Y',      # 09/30/2024
-        '%d/%m/%Y',      # 30/09/2024
+        '%b %d, %Y',     
+        '%B %d, %Y',     
+        '%Y-%m-%d',      
+        '%m/%d/%Y',      
+        '%d/%m/%Y',      
     ]
     
     for fmt in date_formats:

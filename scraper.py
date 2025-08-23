@@ -43,14 +43,11 @@ class ForexDataExtractor:
                   f"{request.end_date.strftime('%b %d, %Y')} to "
                   f"{request.start_date.strftime('%b %d, %Y')}")
             
-            # Convert request to URL parameters
             url_params = request.to_url_params()
             url = self.base_url.format(**url_params)
             
-            # Perform web scraping
             raw_data, headers = await self._scrape_yahoo_finance(url, request)
             
-            # Create metadata
             metadata = ExtractionMetadata(
                 currency_pair=request.currency_pair,
                 date_range_start=request.start_date,
@@ -60,10 +57,8 @@ class ForexDataExtractor:
                 url_accessed=url
             )
             
-            # Convert raw data to structured data points
             data_points = self._convert_to_data_points(raw_data, request)
             
-            # Create result
             result = ForexExtractionResult(
                 data_points=data_points,
                 metadata=metadata,
@@ -110,7 +105,6 @@ class ForexDataExtractor:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
 
-            # Block unnecessary resources
             async def handle_request(route, request_obj):
                 if request_obj.resource_type in ['image', 'iframe']:
                     await route.abort()
@@ -139,7 +133,6 @@ class ForexDataExtractor:
 
             headers = response.css('table thead tr th::text').getall()
             headers = [header.strip() for header in headers if header.strip()]
-            print(f"Extracted headers: {headers}")
 
             print('Extracting historical data rows')
             rows = response.css('div.table-container > table.table > tbody tr')
@@ -154,8 +147,6 @@ class ForexDataExtractor:
                 date_text = date_text.strip()
                 close_price = close_price.strip()
                 
-                print(f"{request.currency_pair} closed at {close_price} on {date_text}")
-
                 row_date = parse_date_string(date_text)
                 if row_date is None:
                     continue
@@ -233,10 +224,7 @@ class ForexDataExtractor:
             
             json_result = await self._save_to_json(result, json_request)
             save_results.append(json_result)
-        
-        #for save_result in save_results:
-        #    print(save_result.get_summary())
-        
+
         return save_results
     
     async def _save_to_csv(
@@ -246,7 +234,6 @@ class ForexDataExtractor:
     ) -> FileOperationResult:
         """Save result to CSV file."""
         try:
-            # Determine filename
             if request.output_file:
                 filename = request.output_file
                 if not filename.endswith('.csv'):
@@ -328,8 +315,10 @@ class ForexDataExtractor:
             with open(filename, 'w') as file:
                 json.dump(json_data, file, indent=2, ensure_ascii=False)
             
-            file_size = os.path.getsize(filename) if os.path.exists(filename) else None
+            file_size = os.path.getsize(filename) if os.path.exists(filename) else 0
+            file_size_mb = file_size / 1024
             rows_written = len(result.data_points)
+            print(f"Number of datapoints collected is {rows_written} and occupies {file_size_mb:.2f} MB")
             
             return FileOperationResult(
                 file_path=filename,
@@ -400,3 +389,38 @@ async def get_forex_data(
             success=False,
             error_message=f"Request validation failed: {e}"
         )
+
+def fetch_forex_data(
+    currency_pair: str,
+    start_date,
+    end_date,
+    output_file: Optional[str] = None,
+    append_to_file: bool = True,
+    output_format: str = "csv"
+) -> ForexExtractionResult:
+    """
+    Synchronous wrapper around get_forex_data.
+    Accepts datetime objects or strings (format: 'MMM DD, YYYY') for dates.
+    """
+    from utils import parse_date_string
+
+    # Convert string dates if provided
+    if isinstance(start_date, str):
+        start_date = parse_date_string(start_date)
+        if not start_date:
+            raise ValueError(f"Invalid start_date string: {start_date}")
+    if isinstance(end_date, str):
+        end_date = parse_date_string(end_date)
+        if not end_date:
+            raise ValueError(f"Invalid end_date string: {end_date}")
+
+    return asyncio.run(
+        get_forex_data(
+            currency_pair=currency_pair,
+            start_date=start_date,
+            end_date=end_date,
+            output_file=output_file,
+            append_to_file=append_to_file,
+            output_format=output_format
+        )
+    )

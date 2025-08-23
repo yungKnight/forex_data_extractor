@@ -1,31 +1,33 @@
-import asyncio
 import sys
 from datetime import datetime
 from utils import get_valid_date, parse_date_string, date_to_unix
-from scraper import get_forex_data
+from scraper import fetch_forex_data
 
-async def main():
+
+def main():
     if len(sys.argv) >= 5:
         currency_pair = sys.argv[1].upper()
-        start_date = parse_date_string(sys.argv[2])
-        end_date = parse_date_string(sys.argv[3])
+        start_date = sys.argv[2]
+        end_date = sys.argv[3]
         output_format = sys.argv[4].lower()
 
-        if not start_date:
-            print(f"Error: Invalid start date '{sys.argv[2]}'. Use 'MMM DD, YYYY' format.")
+        start_dt = parse_date_string(start_date)
+        end_dt = parse_date_string(end_date)
+        if not start_dt:
+            print(f"Error: Invalid start date '{start_date}'. Use 'MMM DD, YYYY' format.")
             return
-        if not end_date:
-            print(f"Error: Invalid end date '{sys.argv[3]}'. Use 'MMM DD, YYYY' format.")
+        if not end_dt:
+            print(f"Error: Invalid end date '{end_date}'. Use 'MMM DD, YYYY' format.")
             return
 
         try:
-            date_to_unix(start_date)
-            date_to_unix(end_date)
+            date_to_unix(start_dt)
+            date_to_unix(end_dt)
         except Exception as e:
             print(f"Error: Date validation failed - {e}")
             return
 
-        result = await get_forex_data(currency_pair, start_date, end_date, output_format=output_format)
+        result = fetch_forex_data(currency_pair, start_dt, end_dt, output_format=output_format)
         if result.success:
             print(f"✓ Data saved with {len(result.data_points)} points")
         else:
@@ -62,7 +64,7 @@ async def main():
             print(f"Date Range: {end_date.strftime('%b %d, %Y')} to {start_date.strftime('%b %d, %Y')}")
             print(f"Output Format: {output_format}")
 
-            result = await get_forex_data(currency_pair, start_date, end_date, output_format=output_format)
+            result = fetch_forex_data(currency_pair, start_date, end_date, output_format=output_format)
             if result.success:
                 print(f"✓ Extraction completed successfully!")
             else:
@@ -77,5 +79,6 @@ async def main():
             import traceback
             traceback.print_exc()
 
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
