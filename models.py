@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field, validator, model_validator
+from config import config
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple, Literal
 from decimal import Decimal
@@ -28,6 +29,9 @@ class ExtractionRequest(BaseModel):
     @validator('currency_pair')
     def validate_currency_pair(cls, ticker):
         """Validate currency pair format"""
+        if not ticker or len(ticker) != config.validation.CURRENCY_PAIR_LENGTH:
+            raise ValueError(f"Currency pair must be exactly {config.validation.CURRENCY_PAIR_LENGTH} characters")
+
         if not ticker:
             raise ValueError("Currency pair cannot be empty")
         
@@ -70,23 +74,15 @@ class ExtractionRequest(BaseModel):
             if not file_name:
                 return None
             
-            invalid_chars = '<>:"/\\|?*'
-            for char in invalid_chars:
+            for char in config.files.INVALID_FILENAME_CHARS:
                 if char in file_name:
                     raise ValueError(f"Output filename cannot contain '{char}'")
         return file_name
     
     def get_default_filename(self, extension: str = None) -> str:
         """Generate default filename based on currency pair"""
-        if extension is None:
-            if self.output_format == OutputFormat.JSON:
-                extension = "json"
-            elif self.output_format == OutputFormat.CSV:
-                extension = "csv"
-            else:
-                extension = "csv" 
-        
-        return f"{self.currency_pair}_historical_data.{extension}"
+        base_name = config.files.DEFAULT_FILENAME_TEMPLATE.format(currency_pair=self.currency_pair)
+        return f"{base_name}.{extension or config.files.CSV_EXTENSION}"
     
     def to_url_params(self) -> Dict[str, Any]:
         """Convert to URL parameters for Yahoo Finance"""
@@ -97,7 +93,6 @@ class ExtractionRequest(BaseModel):
             'start_date': date_to_unix(self.start_date),
             'end_date': date_to_unix(self.end_date)
         }
-
 
 class PriceDataPoint(BaseModel):
     """Individual forex price data point"""
@@ -115,7 +110,7 @@ class PriceDataPoint(BaseModel):
         
         try:
             price = Decimal(str(price))
-            if price <= 0:
+            if price < config.validation.MIN_PRICE_VALUE:
                 raise ValueError("Close price must be positive")
             return price
         except (ValueError, decimal.InvalidOperation) as e:

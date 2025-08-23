@@ -2,7 +2,6 @@
 Configuration settings for the Forex Data Scraper application.
 Centralizes all configurable parameters for easy maintenance and customization.
 """
-
 import os
 from datetime import datetime
 from typing import List

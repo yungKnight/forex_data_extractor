@@ -1,3 +1,4 @@
+from config import config
 import sys
 from datetime import datetime
 from utils import get_valid_date, parse_date_string, date_to_unix
@@ -29,16 +30,15 @@ def main():
 
         result = fetch_forex_data(currency_pair, start_dt, end_dt, output_format=output_format)
         if result.success:
-            print(f"✓ Data saved with {len(result.data_points)} points")
+            print(f"{config.cli.SUCCESS_SYMBOL} Data saved with {len(result.data_points)} points")
         else:
-            print(f"✗ Extraction failed: {result.error_message}")
-
+            print(f"{config.cli.ERROR_SYMBOL} Extraction failed: {result.error_message}")
     else:
-        print("Usage: python cli.py USDEUR 'Jan 01, 2024' 'Jan 01, 2023' [csv|json|both]")
+        print(config.cli.USAGE_MESSAGE)
         print("Running interactive interface...")
 
         try:
-            currency_pair = input("Enter currency pair (e.g., USDEUR, GBPUSD): ").upper().strip()
+            currency_pair = input(config.cli.PROMPTS['currency_pair']).upper().strip()
             if not currency_pair:
                 print("Error: Currency pair cannot be empty")
                 return
@@ -47,17 +47,20 @@ def main():
             min_end_date = datetime(2005, 1, 1)
 
             print(f"\nDate constraints:")
-            print(f"- Start date cannot be later than {max_start_date.strftime('%b %d, %Y')}")
-            print(f"- End date cannot be earlier than {min_end_date.strftime('%b %d, %Y')}")
+            print(f"- Start date cannot be later than {config.dates.MAX_START_DATE.strftime('%b %d, %Y')}")
+            print(f"- End date cannot be earlier than {config.dates.MIN_END_DATE.strftime('%b %d, %Y')}")
             print(f"- Start date must be >= end date (Yahoo Finance requirement)\n")
 
-            start_date = get_valid_date("Enter start date (MMM DD, YYYY): ", max_date=max_start_date, min_date=min_end_date)
+            start_date = get_valid_date(
+                config.cli.PROMPTS['start_date'], 
+                max_date=config.dates.MAX_START_DATE, 
+                min_date=config.dates.MIN_END_DATE
+            )
             end_date = get_valid_date("Enter end date (MMM DD, YYYY): ", max_date=start_date, min_date=min_end_date)
 
-            output_format = input("Enter output format (csv/json/both) [default=csv]: ").lower().strip() or "csv"
-            if output_format not in ["csv", "json", "both"]:
-                print(f"Warning: Invalid format '{output_format}', using 'csv' instead")
-                output_format = "csv"
+            output_format = input(config.cli.PROMPTS['output_format']).lower().strip() or config.cli.DEFAULT_OUTPUT_FORMAT
+            if output_format not in config.cli.VALID_OUTPUT_FORMATS:
+                output_format = config.cli.DEFAULT_OUTPUT_FORMAT
 
             print(f"\nStarting extraction...")
             print(f"Currency Pair: {currency_pair}")
@@ -66,9 +69,9 @@ def main():
 
             result = fetch_forex_data(currency_pair, start_date, end_date, output_format=output_format)
             if result.success:
-                print(f"✓ Extraction completed successfully!")
+                print(f"{config.cli.SUCCESS_SYMBOL} Extraction completed successfully!")
             else:
-                print(f"✗ Extraction failed: {result.error_message}")
+                print(f"{config.cli.ERROR_SYMBOL} Extraction failed: {result.error_message}")
 
         except KeyboardInterrupt:
             print("\nOperation cancelled by user.")

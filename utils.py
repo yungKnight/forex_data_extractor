@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional
+from config import config
 
 def validate_single_date(
     date: datetime, 
@@ -19,6 +20,7 @@ def validate_single_date(
     Raises:
         ValueError: If date validation fails
     """
+    
     if max_date and date > max_date:
         raise ValueError(f"{date_name} cannot be later than {max_date.strftime('%b %d, %Y')}.")
     
@@ -50,7 +52,6 @@ def get_valid_date(prompt: str, max_date: Optional[datetime] = None, min_date: O
             else:
                 print(str(e))
 
-
 def date_to_unix(date: datetime) -> int:
     """
     Converts a datetime object to Unix timestamp.
@@ -74,15 +75,8 @@ def parse_date_string(date_str: str) -> Optional[datetime]:
     Returns:
         datetime or None: Parsed datetime object, or None if parsing fails
     """
-    date_formats = [
-        '%b %d, %Y',     
-        '%B %d, %Y',     
-        '%Y-%m-%d',      
-        '%m/%d/%Y',      
-        '%d/%m/%Y',      
-    ]
-    
-    for fmt in date_formats:
+
+    for fmt in config.dates.SUPPORTED_DATE_FORMATS:
         try:
             return datetime.strptime(date_str.strip(), fmt)
         except ValueError:
@@ -103,6 +97,6 @@ def format_date_for_display(date: datetime, format_style: str = 'short') -> str:
         str: Formatted date string
     """
     if format_style == 'long':
-        return date.strftime('%B %d, %Y')
+        return date.strftime(config.dates.LONG_DISPLAY_FORMAT)
     else:
         return date.strftime('%b %d, %Y')
