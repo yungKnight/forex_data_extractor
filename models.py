@@ -84,7 +84,7 @@ class ExtractionRequest(BaseModel):
             elif self.output_format == OutputFormat.CSV:
                 extension = "csv"
             else:
-                extension = "csv"  # Default for 'both'
+                extension = "csv" 
         
         return f"{self.currency_pair}_historical_data.{extension}"
     
@@ -109,7 +109,6 @@ class PriceDataPoint(BaseModel):
     def parse_close_price(cls, price):
         """Parse and validate close price from string or numeric input"""
         if isinstance(price, str):
-            # Remove commas and other formatting
             price = price.replace(',', '').strip()
             if not price:
                 raise ValueError("Close price cannot be empty")
@@ -203,11 +202,10 @@ class ForexExtractionResult(BaseModel):
         if metadata:
             metadata.total_points = len(data_points)
             
-            # Update date range based on actual data
             if data_points:
                 dates = [point.date for point in data_points]
-                metadata.date_range_start = max(dates)  # Most recent
-                metadata.date_range_end = min(dates)    # Oldest
+                metadata.date_range_start = max(dates)
+                metadata.date_range_end = min(dates)
         
         return self
     
@@ -269,9 +267,6 @@ class FileOperationResult(BaseModel):
         size_info = f" ({self.file_size_bytes} bytes)" if self.file_size_bytes else ""
         return f"{self.format_type.value.upper()} data saved to {self.file_path}{size_info} - {self.rows_written} rows"
 
-
-# Factory functions for creating models from your extractor data
-
 def create_extraction_request(
     currency_pair: str,
     start_date: datetime,
@@ -282,7 +277,6 @@ def create_extraction_request(
 ) -> ExtractionRequest:
     """Factory function to create ExtractionRequest from parameters"""
     
-    # Convert string format to enum
     if isinstance(output_format, str):
         output_format = OutputFormat(output_format.lower())
     
@@ -293,56 +287,4 @@ def create_extraction_request(
         output_file=output_file,
         append_to_file=append_to_file,
         output_format=output_format
-    )
-
-
-def create_result_from_tuples(
-    price_data: List[Tuple[str, str]],
-    request: ExtractionRequest,
-    headers: List[str] = None,
-    url: Optional[str] = None
-) -> ForexExtractionResult:
-    """Factory function to create ForexExtractionResult from tuple data"""
-    from utils import parse_date_string
-    
-    # Convert tuples to PriceDataPoint objects
-    data_points = []
-    for date_str, price_str in price_data:
-        parsed_date = parse_date_string(date_str)
-        if parsed_date:
-            try:
-                point = PriceDataPoint(
-                    date=parsed_date,
-                    close_price=price_str,
-                    date_string=date_str
-                )
-                data_points.append(point)
-            except Exception as e:
-                # Skip invalid data points but log the issue
-                print(f"Warning: Could not create price point for {date_str}: {e}")
-                continue
-    
-    # Create metadata
-    if data_points:
-        dates = [point.date for point in data_points]
-        date_range_start = max(dates)
-        date_range_end = min(dates)
-    else:
-        date_range_start = request.start_date
-        date_range_end = request.end_date
-    
-    metadata = ExtractionMetadata(
-        currency_pair=request.currency_pair,
-        date_range_start=date_range_start,
-        date_range_end=date_range_end,
-        request_params=request,
-        headers_found=headers or [],
-        url_accessed=url,
-        total_points=len(data_points)
-    )
-    
-    return ForexExtractionResult(
-        data_points=data_points,
-        metadata=metadata,
-        success=True
     )

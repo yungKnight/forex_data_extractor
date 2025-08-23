@@ -6,19 +6,15 @@ from typing import List, Optional
 from playwright.async_api import async_playwright
 from scrapy.http import HtmlResponse
 from pydantic import ValidationError
-
-from models import (
-    ExtractionRequest, 
-    ForexExtractionResult, 
-    ExtractionMetadata, 
-    PriceDataPoint,
-    FileOperationResult,
-    OutputFormat,
-    create_extraction_request,
-    create_result_from_tuples
+from models import ( FileOperationResult,
+    ExtractionRequest, ForexExtractionResult, ExtractionMetadata, 
+    PriceDataPoint, create_extraction_request
 )
 from utils import date_to_unix, parse_date_string
+from export import ForexDataExporter
 
+#EXTRACTED_DATA_DIR = "Extracted_Data"
+#os.makedirs(EXTRACTED_DATA_DIR, exist_ok=True)
 
 class ForexDataExtractor:
     """
@@ -189,153 +185,18 @@ class ForexDataExtractor:
         data_points.sort(key=lambda x: x.date)
         
         return data_points
-    
+
     async def _save_result(
         self, 
         result: ForexExtractionResult, 
         request: ExtractionRequest
     ) -> List[FileOperationResult]:
         """
-        Save extraction result to file(s) based on request format.
-        
-        Returns:
-            List[FileOperationResult]: Results of save operations
+        Save extraction result using the dedicated export module.
         """
-        save_results = []
-        
-        if request.output_format == OutputFormat.CSV:
-            save_result = await self._save_to_csv(result, request)
-            save_results.append(save_result)
-            
-        elif request.output_format == OutputFormat.JSON:
-            save_result = await self._save_to_json(result, request)
-            save_results.append(save_result)
-            
-        elif request.output_format == OutputFormat.BOTH:
-            csv_result = await self._save_to_csv(result, request)
-            save_results.append(csv_result)
-            
-            json_request = request.model_copy(deep=True)
-            if request.output_file:
-                if request.output_file.endswith('.csv'):
-                    json_request.output_file = request.output_file.replace('.csv', '.json')
-                elif not request.output_file.endswith('.json'):
-                    json_request.output_file = f"{request.output_file}.json"
-            
-            json_result = await self._save_to_json(result, json_request)
-            save_results.append(json_result)
-
-        return save_results
+        exporter = ForexDataExporter()
+        return await exporter.export_result(result, request)
     
-    async def _save_to_csv(
-        self, 
-        result: ForexExtractionResult, 
-        request: ExtractionRequest
-    ) -> FileOperationResult:
-        """Save result to CSV file."""
-        try:
-            if request.output_file:
-                filename = request.output_file
-                if not filename.endswith('.csv'):
-                    filename = f"{filename}.csv"
-            else:
-                filename = request.get_default_filename('csv')
-            
-            file_exists = os.path.isfile(filename) and request.append_to_file
-            mode = 'a' if request.append_to_file else 'w'
-            
-            rows_written = 0
-            
-            with open(filename, mode=mode, newline='') as file:
-                writer = csv.writer(file)
-                
-                if not file_exists:
-                    writer.writerow(['Date', 'Close'])
-                    
-                csv_rows = result.to_csv_rows()
-                for row_data in csv_rows:
-                    writer.writerow([row_data['date'], row_data['close']])
-                    rows_written += 1
-            
-            file_size = os.path.getsize(filename) if os.path.exists(filename) else None
-            
-            return FileOperationResult(
-                file_path=filename,
-                format_type=OutputFormat.CSV,
-                rows_written=rows_written,
-                success=True,
-                file_size_bytes=file_size
-            )
-            
-        except Exception as e:
-            return FileOperationResult(
-                file_path=filename if 'filename' in locals() else "unknown",
-                format_type=OutputFormat.CSV,
-                success=False,
-                error_message=str(e)
-            )
-    
-    async def _save_to_json(
-        self, 
-        result: ForexExtractionResult, 
-        request: ExtractionRequest
-    ) -> FileOperationResult:
-        """Save result to JSON file."""
-        try:
-            if request.output_file:
-                filename = request.output_file
-                if not filename.endswith('.json'):
-                    filename = f"{filename}.json"
-            else:
-                filename = request.get_default_filename('json')
-            
-            json_data = result.to_json_structure()
-            
-            if request.append_to_file and os.path.isfile(filename):
-                try:
-                    with open(filename, 'r') as file:
-                        existing_data = json.load(file)
-                    
-                    if isinstance(existing_data, dict) and "historical_data" in existing_data:
-                        existing_data["extraction_date"] = json_data["extraction_date"]
-                        existing_data["data_count"] += len(json_data["historical_data"])
-                        
-                        existing_dates = {item.get('date') for item in existing_data["historical_data"]}
-                        for new_item in json_data["historical_data"]:
-                            if new_item.get('date') not in existing_dates:
-                                existing_data["historical_data"].append(new_item)
-                        
-                        json_data = existing_data
-                    else:
-                        json_data = [existing_data, json_data]
-                        
-                except (json.JSONDecodeError, IOError):
-                    pass
-            
-            with open(filename, 'w') as file:
-                json.dump(json_data, file, indent=2, ensure_ascii=False)
-            
-            file_size = os.path.getsize(filename) if os.path.exists(filename) else 0
-            file_size_mb = file_size / 1024
-            rows_written = len(result.data_points)
-            print(f"Number of datapoints collected is {rows_written} and occupies {file_size_mb:.2f} MB")
-            
-            return FileOperationResult(
-                file_path=filename,
-                format_type=OutputFormat.JSON,
-                rows_written=rows_written,
-                success=True,
-                file_size_bytes=file_size
-            )
-            
-        except Exception as e:
-            return FileOperationResult(
-                file_path=filename if 'filename' in locals() else "unknown",
-                format_type=OutputFormat.JSON,
-                success=False,
-                error_message=str(e)
-            )
-
 async def get_forex_data(
     currency_pair: str,
     start_date,
@@ -404,7 +265,6 @@ def fetch_forex_data(
     """
     from utils import parse_date_string
 
-    # Convert string dates if provided
     if isinstance(start_date, str):
         start_date = parse_date_string(start_date)
         if not start_date:

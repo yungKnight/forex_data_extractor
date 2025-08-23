@@ -2,3 +2,4 @@ knr/
 __pycache__/
 *.csv
 *.json
+extracted_data/
