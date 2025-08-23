@@ -1,41 +1,6 @@
 from datetime import datetime
 from typing import Optional
 
-
-def validate_date_range(
-    start_date: datetime, 
-    end_date: datetime, 
-    max_start_date: Optional[datetime] = None,
-    min_end_date: Optional[datetime] = None
-) -> None:
-    """
-    Validates a date range against optional min/max constraints.
-    
-    Args:
-        start_date (datetime): The start date to validate
-        end_date (datetime): The end date to validate
-        max_start_date (datetime, optional): Maximum allowed start date (defaults to today)
-        min_end_date (datetime, optional): Minimum allowed end date (defaults to Jan 1, 2005)
-        
-    Raises:
-        ValueError: If any date validation fails
-    """
-    if max_start_date is None:
-        max_start_date = datetime.today()
-    
-    if min_end_date is None:
-        min_end_date = datetime(2005, 1, 1)
-    
-    if start_date > max_start_date:
-        raise ValueError(f"Start date cannot be later than {max_start_date.strftime('%b %d, %Y')}.")
-    
-    if end_date < min_end_date:
-        raise ValueError(f"End date cannot be earlier than {min_end_date.strftime('%b %d, %Y')}.")
-    
-    if start_date < end_date:
-        raise ValueError("Start date cannot be earlier than the end date.")
-
-
 def validate_single_date(
     date: datetime, 
     max_date: Optional[datetime] = None,
@@ -98,7 +63,6 @@ def date_to_unix(date: datetime) -> int:
     """
     return int(date.timestamp())
 
-
 def parse_date_string(date_str: str) -> Optional[datetime]:
     """
     Convert date string from Yahoo Finance to datetime object.
@@ -127,30 +91,6 @@ def parse_date_string(date_str: str) -> Optional[datetime]:
     print(f"Could not parse date: {date_str}")
     return None
 
-
-def create_date_range(start_year: int, start_month: int, start_day: int,
-                     end_year: int, end_month: int, end_day: int) -> tuple[datetime, datetime]:
-    """
-    Create and validate a date range from individual date components.
-    
-    Args:
-        start_year, start_month, start_day: Start date components
-        end_year, end_month, end_day: End date components
-        
-    Returns:
-        tuple[datetime, datetime]: (start_date, end_date)
-        
-    Raises:
-        ValueError: If date range is invalid
-    """
-    start_date = datetime(start_year, start_month, start_day)
-    end_date = datetime(end_year, end_month, end_day)
-    
-    validate_date_range(start_date, end_date)
-    
-    return start_date, end_date
-
-
 def format_date_for_display(date: datetime, format_style: str = 'short') -> str:
     """
     Format datetime object for consistent display.
@@ -166,21 +106,3 @@ def format_date_for_display(date: datetime, format_style: str = 'short') -> str:
         return date.strftime('%B %d, %Y')
     else:
         return date.strftime('%b %d, %Y')
-
-
-def get_business_date_constraints() -> tuple[datetime, datetime]:
-    """
-    Get the standard business constraints for forex data.
-    
-    Returns:
-        tuple[datetime, datetime]: (min_end_date, max_start_date)
-    """
-    min_end_date = datetime(2005, 1, 1)
-    max_start_date = datetime.today()
-    return min_end_date, max_start_date
-
-
-# Backwards compatibility aliases
-def date_to_unix_timestamp(date: datetime) -> int:
-    """Alias for date_to_unix for backwards compatibility."""
-    return date_to_unix(date)

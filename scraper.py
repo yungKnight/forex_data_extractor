@@ -1,80 +1,121 @@
 import asyncio
-from playwright.async_api import async_playwright
-import scrapy
-from scrapy.http import HtmlResponse
-import csv
-import json
 import os
-import re
-from datetime import datetime
-from typing import List, Tuple, Optional, Dict, Any
-from utils import date_to_unix as to_unix, parse_date_string
+import json
+import csv
+from typing import List, Optional
+from playwright.async_api import async_playwright
+from scrapy.http import HtmlResponse
+from pydantic import ValidationError
+
+from models import (
+    ExtractionRequest, 
+    ForexExtractionResult, 
+    ExtractionMetadata, 
+    PriceDataPoint,
+    FileOperationResult,
+    OutputFormat,
+    create_extraction_request,
+    create_result_from_tuples
+)
+from utils import date_to_unix, parse_date_string
 
 
 class ForexDataExtractor:
     """
-    A class to extract historical forex data from Yahoo Finance.
+    Enhanced forex data extractor using Pydantic models for type safety and validation.
     """
     
     def __init__(self):
         self.base_url = "https://finance.yahoo.com/quote/{currency_pair}=X/history/?period1={end_date}&period2={start_date}"
-        self.min_end_date = datetime(2005, 1, 1)
-        self.max_start_date = datetime.today()
     
-    async def extract_forex_data(
-        self, 
-        currency_pair: str, 
-        start_date: datetime, 
-        end_date: datetime,
-        output_file: Optional[str] = None,
-        append_to_file: bool = True,
-        output_format: str = "csv"
-    ) -> List[Tuple[str, str]]:
+    async def extract_forex_data(self, request: ExtractionRequest) -> ForexExtractionResult:
         """
-        Extract historical forex data for a given currency pair and date range.
+        Extract historical forex data using structured request model.
         
         Args:
-            currency_pair (str): Currency pair (e.g., 'USDEUR', 'GBPUSD')
-            start_date (datetime): Start date for data extraction
-            end_date (datetime): End date for data extraction  
-            output_file (str, optional): Output file to save data. If None, uses default naming
-            append_to_file (bool): Whether to append to existing file or overwrite
-            output_format (str): Output format - 'csv', 'json', or 'both' (default: 'csv')
+            request (ExtractionRequest): Validated extraction request
             
         Returns:
-            List[Tuple[str, str]]: List of tuples containing (date, close_price)
-            
-        Raises:
-            ValueError: If dates are invalid or outside allowed range
+            ForexExtractionResult: Complete extraction result with metadata
         """
-        currency_pair = currency_pair.upper()
+        try:
+            print(f"Extracting {request.currency_pair} data from "
+                  f"{request.end_date.strftime('%b %d, %Y')} to "
+                  f"{request.start_date.strftime('%b %d, %Y')}")
+            
+            # Convert request to URL parameters
+            url_params = request.to_url_params()
+            url = self.base_url.format(**url_params)
+            
+            # Perform web scraping
+            raw_data, headers = await self._scrape_yahoo_finance(url, request)
+            
+            # Create metadata
+            metadata = ExtractionMetadata(
+                currency_pair=request.currency_pair,
+                date_range_start=request.start_date,
+                date_range_end=request.end_date,
+                request_params=request,
+                headers_found=headers,
+                url_accessed=url
+            )
+            
+            # Convert raw data to structured data points
+            data_points = self._convert_to_data_points(raw_data, request)
+            
+            # Create result
+            result = ForexExtractionResult(
+                data_points=data_points,
+                metadata=metadata,
+                success=True
+            )
+            
+            print(result.get_summary())
+            
+            # Save data if requested
+            if request.output_file is not None or len(data_points) > 0:
+                await self._save_result(result, request)
+            
+            return result
+            
+        except Exception as e:
+            # Return failed result with error information
+            metadata = ExtractionMetadata(
+                currency_pair=request.currency_pair,
+                date_range_start=request.start_date,
+                date_range_end=request.end_date,
+                request_params=request,
+                url_accessed=self.base_url.format(**request.to_url_params())
+            )
+            
+            return ForexExtractionResult(
+                data_points=[],
+                metadata=metadata,
+                success=False,
+                error_message=str(e)
+            )
+    
+    async def _scrape_yahoo_finance(
+        self, 
+        url: str, 
+        request: ExtractionRequest
+    ) -> tuple[List[tuple[str, str]], List[str]]:
+        """
+        Perform the actual web scraping of Yahoo Finance.
         
-        # Validate date constraints (matching your original utils logic)
-        if start_date > self.max_start_date:
-            raise ValueError(f"Start date cannot be later than {self.max_start_date.strftime('%b %d, %Y')}.")
-        
-        if end_date < self.min_end_date:
-            raise ValueError(f"End date cannot be earlier than {self.min_end_date.strftime('%b %d, %Y')}.")
-        
-        # Validate date range relationship
-        if start_date < end_date:
-            raise ValueError("Start date cannot be earlier than the end date.")
-        
-        # Convert dates to Unix timestamps
-        start_date_secs = to_unix(start_date)
-        end_date_secs = to_unix(end_date)
-        
-        print(f"Extracting {currency_pair} data from {end_date.strftime('%b %d, %Y')} to {start_date.strftime('%b %d, %Y')}")
-        
-        price_data = []
+        Returns:
+            tuple: (raw_data_tuples, headers_found)
+        """
+        raw_data = []
+        headers = []
         
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
 
-            # Block unnecessary resources for faster loading
-            async def handle_request(route, request):
-                if request.resource_type in ['image', 'iframe']:
+            # Block unnecessary resources
+            async def handle_request(route, request_obj):
+                if request_obj.resource_type in ['image', 'iframe']:
                     await route.abort()
                 else:
                     await route.continue_()
@@ -82,13 +123,7 @@ class ForexDataExtractor:
             await page.route("**/*", handle_request)
 
             # Navigate to Yahoo Finance
-            url = self.base_url.format(
-                currency_pair=currency_pair,
-                end_date=end_date_secs,
-                start_date=start_date_secs
-            )
-            
-            print(f'Navigating to Yahoo! Finance {currency_pair} historical data')
+            print(f'Navigating to Yahoo! Finance {request.currency_pair} historical data')
             await page.goto(url, timeout=0)
 
             # Wait for page elements to load
@@ -104,8 +139,7 @@ class ForexDataExtractor:
             html_content = await page.content()
             
             if not html_content:
-                print("Failed to retrieve HTML content")
-                return price_data
+                raise Exception("Failed to retrieve HTML content")
 
             response = HtmlResponse(url=page.url, body=html_content.encode(), encoding='utf-8')
 
@@ -113,10 +147,6 @@ class ForexDataExtractor:
             headers = response.css('table thead tr th::text').getall()
             headers = [header.strip() for header in headers if header.strip()]
             print(f"Extracted headers: {headers}")
-
-            # Find date and close price columns
-            date_header = next((h for h in headers if h == 'Date'), 'Date')
-            close_header = next((h for h in headers if h == 'Close'), 'Close')
 
             # Extract table rows
             print('Extracting historical data rows')
@@ -132,7 +162,7 @@ class ForexDataExtractor:
                 date_text = date_text.strip()
                 close_price = close_price.strip()
                 
-                print(f"{currency_pair} closed at {close_price} on {date_text}")
+                print(f"{request.currency_pair} closed at {close_price} on {date_text}")
 
                 # Parse and validate date
                 row_date = parse_date_string(date_text)
@@ -140,211 +170,222 @@ class ForexDataExtractor:
                     continue
 
                 # Check if date is within specified range
-                if row_date <= start_date and row_date >= end_date:
-                    price_data.append((date_text, close_price))
-
-            print(f"Total data points collected: {len(price_data)}")
-            
-            # Sort data chronologically
-            price_data.sort(key=lambda x: parse_date_string(x[0]))
-
-            # Save to file if requested
-            if output_file is not None or len(price_data) > 0:
-                await self._save_data(
-                    price_data, 
-                    currency_pair, 
-                    date_header, 
-                    close_header, 
-                    output_file, 
-                    append_to_file,
-                    output_format
-                )
+                if row_date <= request.start_date and row_date >= request.end_date:
+                    raw_data.append((date_text, close_price))
 
             await page.close()
             await browser.close()
 
-        return price_data
-
-    async def _save_data(
+        return raw_data, headers
+    
+    def _convert_to_data_points(
         self, 
-        price_data: List[Tuple[str, str]], 
-        currency_pair: str,
-        date_header: str,
-        close_header: str,
-        output_file: Optional[str] = None,
-        append_to_file: bool = True,
-        output_format: str = "csv"
-    ) -> None:
+        raw_data: List[tuple[str, str]], 
+        request: ExtractionRequest
+    ) -> List[PriceDataPoint]:
         """
-        Save price data to file(s) in specified format(s).
+        Convert raw scraped data to validated PriceDataPoint objects.
+        """
+        data_points = []
         
-        Args:
-            price_data: List of (date, price) tuples
-            currency_pair: Currency pair name
-            date_header: Header for date column
-            close_header: Header for close price column
-            output_file: Output file name (optional)
-            append_to_file: Whether to append to existing file
-            output_format: Format to save - 'csv', 'json', or 'both'
+        for date_str, price_str in raw_data:
+            try:
+                parsed_date = parse_date_string(date_str)
+                if parsed_date:
+                    point = PriceDataPoint(
+                        date=parsed_date,
+                        close_price=price_str,
+                        date_string=date_str
+                    )
+                    data_points.append(point)
+            except ValidationError as e:
+                print(f"Warning: Invalid data point ({date_str}, {price_str}): {e}")
+                continue
+            except Exception as e:
+                print(f"Warning: Could not process data point ({date_str}, {price_str}): {e}")
+                continue
+        
+        # Sort chronologically
+        data_points.sort(key=lambda x: x.date)
+        
+        return data_points
+    
+    async def _save_result(
+        self, 
+        result: ForexExtractionResult, 
+        request: ExtractionRequest
+    ) -> List[FileOperationResult]:
         """
-        if output_format.lower() == "csv":
-            await self._save_to_csv(
-                price_data, currency_pair, date_header, close_header, output_file, append_to_file
-            )
-        elif output_format.lower() == "json":
-            await self._save_to_json(
-                price_data, currency_pair, date_header, close_header, output_file, append_to_file
-            )
-        elif output_format.lower() == "both":
-            # Save CSV
-            csv_file = output_file
-            if csv_file and not csv_file.endswith('.csv'):
-                csv_file = f"{csv_file}.csv"
-            await self._save_to_csv(
-                price_data, currency_pair, date_header, close_header, csv_file, append_to_file
-            )
+        Save extraction result to file(s) based on request format.
+        
+        Returns:
+            List[FileOperationResult]: Results of save operations
+        """
+        save_results = []
+        
+        if request.output_format == OutputFormat.CSV:
+            save_result = await self._save_to_csv(result, request)
+            save_results.append(save_result)
             
-            # Save JSON
-            json_file = output_file
-            if json_file:
-                if json_file.endswith('.csv'):
-                    json_file = json_file.replace('.csv', '.json')
-                elif not json_file.endswith('.json'):
-                    json_file = f"{json_file}.json"
-            await self._save_to_json(
-                price_data, currency_pair, date_header, close_header, json_file, append_to_file
-            )
-        else:
-            raise ValueError("output_format must be 'csv', 'json', or 'both'")
-
+        elif request.output_format == OutputFormat.JSON:
+            save_result = await self._save_to_json(result, request)
+            save_results.append(save_result)
+            
+        elif request.output_format == OutputFormat.BOTH:
+            # Save CSV
+            csv_result = await self._save_to_csv(result, request)
+            save_results.append(csv_result)
+            
+            # Save JSON with modified filename
+            json_request = request.model_copy(deep=True)
+            if request.output_file:
+                if request.output_file.endswith('.csv'):
+                    json_request.output_file = request.output_file.replace('.csv', '.json')
+                elif not request.output_file.endswith('.json'):
+                    json_request.output_file = f"{request.output_file}.json"
+            
+            json_result = await self._save_to_json(result, json_request)
+            save_results.append(json_result)
+        
+        # Print save summaries
+        for save_result in save_results:
+            print(save_result.get_summary())
+        
+        return save_results
+    
     async def _save_to_csv(
         self, 
-        price_data: List[Tuple[str, str]], 
-        currency_pair: str,
-        date_header: str,
-        close_header: str,
-        output_file: Optional[str] = None,
-        append_to_file: bool = True
-    ) -> None:
-        """
-        Save price data to CSV file.
-        
-        Args:
-            price_data: List of (date, price) tuples
-            currency_pair: Currency pair name
-            date_header: Header for date column
-            close_header: Header for close price column
-            output_file: Output file name (optional)
-            append_to_file: Whether to append to existing file
-        """
-        if output_file is None:
-            output_file = f'{currency_pair}_historical_data.csv'
-        elif not output_file.endswith('.csv'):
-            output_file = f'{output_file}.csv'
-        
-        file_exists = os.path.isfile(output_file) and append_to_file
-        mode = 'a' if append_to_file else 'w'
-
-        with open(output_file, mode=mode, newline='') as file:
-            writer = csv.writer(file)
-
-            # Write headers if new file or overwriting
-            if not file_exists:
-                writer.writerow([date_header, close_header])
-
-            # Write data
-            for date_str, price in price_data:
-                writer.writerow([date_str, price])
-
-        print(f"CSV data saved to {output_file}")
-        print(f"Total rows written: {len(price_data)}")
-
+        result: ForexExtractionResult, 
+        request: ExtractionRequest
+    ) -> FileOperationResult:
+        """Save result to CSV file."""
+        try:
+            # Determine filename
+            if request.output_file:
+                filename = request.output_file
+                if not filename.endswith('.csv'):
+                    filename = f"{filename}.csv"
+            else:
+                filename = request.get_default_filename('csv')
+            
+            file_exists = os.path.isfile(filename) and request.append_to_file
+            mode = 'a' if request.append_to_file else 'w'
+            
+            rows_written = 0
+            
+            with open(filename, mode=mode, newline='') as file:
+                writer = csv.writer(file)
+                
+                # Write headers if new file or overwriting
+                if not file_exists:
+                    writer.writerow(['Date', 'Close'])
+                    
+                # Write data
+                csv_rows = result.to_csv_rows()
+                for row_data in csv_rows:
+                    writer.writerow([row_data['date'], row_data['close']])
+                    rows_written += 1
+            
+            # Get file size
+            file_size = os.path.getsize(filename) if os.path.exists(filename) else None
+            
+            return FileOperationResult(
+                file_path=filename,
+                format_type=OutputFormat.CSV,
+                rows_written=rows_written,
+                success=True,
+                file_size_bytes=file_size
+            )
+            
+        except Exception as e:
+            return FileOperationResult(
+                file_path=filename if 'filename' in locals() else "unknown",
+                format_type=OutputFormat.CSV,
+                success=False,
+                error_message=str(e)
+            )
+    
     async def _save_to_json(
         self, 
-        price_data: List[Tuple[str, str]], 
-        currency_pair: str,
-        date_header: str,
-        close_header: str,
-        output_file: Optional[str] = None,
-        append_to_file: bool = True
-    ) -> None:
-        """
-        Save price data to JSON file.
-        
-        Args:
-            price_data: List of (date, price) tuples
-            currency_pair: Currency pair name
-            date_header: Header for date column
-            close_header: Header for close price column
-            output_file: Output file name (optional)
-            append_to_file: Whether to append to existing file
-        """
-        if output_file is None:
-            output_file = f'{currency_pair}_historical_data.json'
-        elif not output_file.endswith('.json'):
-            output_file = f'{output_file}.json'
-        
-        # Create JSON structure
-        json_data = {
-            "currency_pair": currency_pair,
-            "extraction_date": datetime.now().isoformat(),
-            "data_count": len(price_data),
-            "historical_data": []
-        }
-        
-        # Convert data to JSON format
-        for date_str, price in price_data:
-            json_data["historical_data"].append({
-                date_header.lower(): date_str,
-                close_header.lower(): price
-            })
-        
-        # Handle append mode for JSON
-        if append_to_file and os.path.isfile(output_file):
-            try:
-                with open(output_file, 'r') as file:
-                    existing_data = json.load(file)
-                
-                # If existing file has the same structure, merge data
-                if isinstance(existing_data, dict) and "historical_data" in existing_data:
-                    # Update metadata
-                    existing_data["extraction_date"] = json_data["extraction_date"]
-                    existing_data["data_count"] += len(price_data)
+        result: ForexExtractionResult, 
+        request: ExtractionRequest
+    ) -> FileOperationResult:
+        """Save result to JSON file."""
+        try:
+            # Determine filename
+            if request.output_file:
+                filename = request.output_file
+                if not filename.endswith('.json'):
+                    filename = f"{filename}.json"
+            else:
+                filename = request.get_default_filename('json')
+            
+            # Get JSON structure
+            json_data = result.to_json_structure()
+            
+            # Handle append mode for JSON
+            if request.append_to_file and os.path.isfile(filename):
+                try:
+                    with open(filename, 'r') as file:
+                        existing_data = json.load(file)
                     
-                    # Merge historical data
-                    existing_dates = {item.get(date_header.lower()) for item in existing_data["historical_data"]}
-                    for new_item in json_data["historical_data"]:
-                        if new_item.get(date_header.lower()) not in existing_dates:
-                            existing_data["historical_data"].append(new_item)
-                    
-                    json_data = existing_data
-                else:
-                    # If structure is different, create array of datasets
-                    json_data = [existing_data, json_data]
-                    
-            except (json.JSONDecodeError, IOError):
-                # If can't read/parse existing file, overwrite
-                pass
-        
-        # Write JSON data
-        with open(output_file, 'w') as file:
-            json.dump(json_data, file, indent=2, ensure_ascii=False)
-        
-        print(f"JSON data saved to {output_file}")
-        print(f"Total data points written: {len(price_data)}")
+                    # If existing file has the same structure, merge data
+                    if isinstance(existing_data, dict) and "historical_data" in existing_data:
+                        # Update metadata
+                        existing_data["extraction_date"] = json_data["extraction_date"]
+                        existing_data["data_count"] += len(json_data["historical_data"])
+                        
+                        # Merge historical data (avoid duplicates)
+                        existing_dates = {item.get('date') for item in existing_data["historical_data"]}
+                        for new_item in json_data["historical_data"]:
+                            if new_item.get('date') not in existing_dates:
+                                existing_data["historical_data"].append(new_item)
+                        
+                        json_data = existing_data
+                    else:
+                        # If structure is different, create array of datasets
+                        json_data = [existing_data, json_data]
+                        
+                except (json.JSONDecodeError, IOError):
+                    # If can't read/parse existing file, overwrite
+                    pass
+            
+            # Write JSON data
+            with open(filename, 'w') as file:
+                json.dump(json_data, file, indent=2, ensure_ascii=False)
+            
+            # Get file size
+            file_size = os.path.getsize(filename) if os.path.exists(filename) else None
+            rows_written = len(result.data_points)
+            
+            return FileOperationResult(
+                file_path=filename,
+                format_type=OutputFormat.JSON,
+                rows_written=rows_written,
+                success=True,
+                file_size_bytes=file_size
+            )
+            
+        except Exception as e:
+            return FileOperationResult(
+                file_path=filename if 'filename' in locals() else "unknown",
+                format_type=OutputFormat.JSON,
+                success=False,
+                error_message=str(e)
+            )
 
 
-# Convenience function for direct usage
+# Enhanced convenience function using models
 async def get_forex_data(
     currency_pair: str,
-    start_date: datetime,
-    end_date: datetime,
+    start_date,
+    end_date,
     output_file: Optional[str] = None,
     append_to_file: bool = True,
     output_format: str = "csv"
-) -> List[Tuple[str, str]]:
+) -> ForexExtractionResult:
     """
-    Convenience function to extract forex data without instantiating the class.
+    Enhanced convenience function that returns structured result.
     
     Args:
         currency_pair (str): Currency pair (e.g., 'USDEUR', 'GBPUSD')
@@ -352,54 +393,173 @@ async def get_forex_data(
         end_date (datetime): End date for data extraction
         output_file (str, optional): Output file to save data
         append_to_file (bool): Whether to append to existing file
-        output_format (str): Output format - 'csv', 'json', or 'both' (default: 'csv')
+        output_format (str): Output format - 'csv', 'json', or 'both'
         
     Returns:
-        List[Tuple[str, str]]: List of (date, close_price) tuples
+        ForexExtractionResult: Complete extraction result with metadata and validation
     """
-    extractor = ForexDataExtractor()
-    return await extractor.extract_forex_data(
-        currency_pair, start_date, end_date, output_file, append_to_file, output_format
-    )
+    try:
+        # Create validated request
+        request = create_extraction_request(
+            currency_pair=currency_pair,
+            start_date=start_date,
+            end_date=end_date,
+            output_file=output_file,
+            append_to_file=append_to_file,
+            output_format=output_format
+        )
+        
+        # Execute extraction
+        extractor = ForexDataExtractor()
+        return await extractor.extract_forex_data(request)
+        
+    except ValidationError as e:
+        # Return failed result for validation errors
+        from models import ExtractionMetadata
+        
+        metadata = ExtractionMetadata(
+            currency_pair=currency_pair,
+            date_range_start=start_date,
+            date_range_end=end_date,
+            request_params=create_extraction_request(
+                currency_pair, start_date, end_date, output_file, append_to_file, output_format
+            )
+        )
+        
+        return ForexExtractionResult(
+            data_points=[],
+            metadata=metadata,
+            success=False,
+            error_message=f"Request validation failed: {e}"
+        )
 
 
-# Example usage
+# Example usage with models
 if __name__ == "__main__":
     import sys
+    from datetime import datetime
+    from utils import get_valid_date
     
     async def main():
         if len(sys.argv) >= 5:
-            # Command line usage: python forex_extractor.py USDEUR "Jan 01, 2024" "Jan 01, 2023" json
+            # Command line usage
             currency_pair = sys.argv[1].upper()
             start_date = parse_date_string(sys.argv[2])
             end_date = parse_date_string(sys.argv[3])
             output_format = sys.argv[4].lower()
             
-            if not start_date or not end_date:
-                print("Error: Invalid date format. Use 'MMM DD, YYYY' format.")
+            # Validate dates using utils function
+            if not start_date:
+                print(f"Error: Invalid start date '{sys.argv[2]}'. Use 'MMM DD, YYYY' format.")
+                return
+            if not end_date:
+                print(f"Error: Invalid end date '{sys.argv[3]}'. Use 'MMM DD, YYYY' format.")
                 return
             
-            data = await get_forex_data(
+            # Additional validation using utils
+            try:
+                from utils import date_to_unix  # Test if dates can be converted
+                date_to_unix(start_date)
+                date_to_unix(end_date)
+            except Exception as e:
+                print(f"Error: Date validation failed - {e}")
+                return
+            
+            result = await get_forex_data(
                 currency_pair, start_date, end_date, output_format=output_format
             )
-            print(f"Retrieved {len(data)} data points for {currency_pair}")
+            
+            if result.success:
+                print(f"✓ {result.get_summary()}")
+                print(f"✓ Data saved with {len(result.data_points)} points")
+            else:
+                print(f"✗ Extraction failed: {result.error_message}")
+                
         else:
-            # Default example usage
+            # Interactive example with utils validation
             print("Usage: python forex_extractor.py USDEUR 'Jan 01, 2024' 'Jan 01, 2023' [csv|json|both]")
-            print("Running default example...")
+            print("Running interactive example...")
             
-            start_date = datetime(2024, 1, 1)
-            end_date = datetime(2023, 1, 1)
-            currency_pair = input("Enter the currency pair (e.g., USDEUR, GBPUSD): ").upper()
-            output_format = input("Enter output format (csv/json/both) [default=csv]: ").lower() or "csv"
-            
-            data = await get_forex_data(
-                currency_pair=currency_pair,
-                start_date=start_date,
-                end_date=end_date,
-                output_format=output_format
-            )
-            
-            print(f"Retrieved {len(data)} data points")
+            try:
+                # Get currency pair
+                currency_pair = input("Enter currency pair (e.g., USDEUR, GBPUSD): ").upper().strip()
+                if not currency_pair:
+                    print("Error: Currency pair cannot be empty")
+                    return
+                
+                # Get dates using utils validation with business constraints
+                max_start_date = datetime.today()
+                min_end_date = datetime(2005, 1, 1)
+                
+                print(f"\nDate constraints:")
+                print(f"- Start date cannot be later than {max_start_date.strftime('%b %d, %Y')}")
+                print(f"- End date cannot be earlier than {min_end_date.strftime('%b %d, %Y')}")
+                print(f"- Start date must be >= end date (Yahoo Finance requirement)\n")
+                
+                # Get start date with validation
+                start_date = get_valid_date(
+                    "Enter start date (MMM DD, YYYY): ", 
+                    max_date=max_start_date,
+                    min_date=min_end_date
+                )
+                
+                # Get end date with validation (ensuring it's not later than start date)
+                end_date = get_valid_date(
+                    "Enter end date (MMM DD, YYYY): ", 
+                    max_date=start_date,  # End date can't be later than start date
+                    min_date=min_end_date
+                )
+                
+                # Get output format
+                output_format = input("Enter output format (csv/json/both) [default=csv]: ").lower().strip() or "csv"
+                
+                # Validate output format
+                valid_formats = ['csv', 'json', 'both']
+                if output_format not in valid_formats:
+                    print(f"Warning: Invalid format '{output_format}', using 'csv' instead")
+                    output_format = 'csv'
+                
+                print(f"\nStarting extraction...")
+                print(f"Currency Pair: {currency_pair}")
+                print(f"Date Range: {end_date.strftime('%b %d, %Y')} to {start_date.strftime('%b %d, %Y')}")
+                print(f"Output Format: {output_format}")
+                
+                result = await get_forex_data(
+                    currency_pair=currency_pair,
+                    start_date=start_date,
+                    end_date=end_date,
+                    output_format=output_format
+                )
+                
+                if result.success:
+                    print(f"\n✓ {result.get_summary()}")
+                    print(f"✓ Extraction completed successfully!")
+                    
+                    # Show sample data
+                    if result.data_points:
+                        print(f"\nSample data points:")
+                        sample_count = min(5, len(result.data_points))
+                        for i, point in enumerate(result.data_points[:sample_count]):
+                            print(f"  {point.date_string}: {point.close_price}")
+                        if len(result.data_points) > sample_count:
+                            print(f"  ... and {len(result.data_points) - sample_count} more points")
+                            
+                        # Show date range summary
+                        if len(result.data_points) > 1:
+                            print(f"\nData range: {result.data_points[-1].date_string} to {result.data_points[0].date_string}")
+                    else:
+                        print("\nNo data points found for the specified criteria")
+                        
+                else:
+                    print(f"\n✗ Extraction failed: {result.error_message}")
+                    
+            except KeyboardInterrupt:
+                print("\nOperation cancelled by user.")
+            except ValueError as e:
+                print(f"\nValidation error: {e}")
+            except Exception as e:
+                print(f"\nUnexpected error: {e}")
+                import traceback
+                traceback.print_exc()
     
     asyncio.run(main())
