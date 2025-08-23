@@ -10,6 +10,7 @@ from models import ( FileOperationResult,
     ExtractionRequest, ForexExtractionResult, ExtractionMetadata, 
     PriceDataPoint, create_extraction_request
 )
+from config import config
 from utils import date_to_unix, parse_date_string
 from export import ForexDataExporter
 
@@ -22,7 +23,7 @@ class ForexDataExtractor:
     """
     
     def __init__(self):
-        self.base_url = "https://finance.yahoo.com/quote/{currency_pair}=X/history/?period1={end_date}&period2={start_date}"
+        self.base_url = config.scraper.BASE_URL
     
     async def extract_forex_data(self, request: ExtractionRequest) -> ForexExtractionResult:
         """
@@ -98,11 +99,11 @@ class ForexDataExtractor:
         headers = []
         
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(headless=config.scraper.BROWSER_HEADLESS)
             page = await browser.new_page()
 
             async def handle_request(route, request_obj):
-                if request_obj.resource_type in ['image', 'iframe']:
+                if request_obj.resource_type in config.scraper.BLOCKED_RESOURCE_TYPES:
                     await route.abort()
                 else:
                     await route.continue_()
@@ -112,13 +113,13 @@ class ForexDataExtractor:
             print(f'Navigating to Yahoo! Finance {request.currency_pair} historical data')
             await page.goto(url, timeout=0)
 
-            await page.wait_for_selector('section.gridLayout > div.container')
+            await page.wait_for_selector(config.scraper.SELECTORS['main_container'])
             print('Page navigation successful')
 
-            await page.query_selector('div.container > div.table-container')
+            await page.query_selector(config.scraper.SELECTORS['table_container'])
             print('Table container confirmed')
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(config.scraper.PAGE_WAIT_DELAY)
 
             html_content = await page.content()
             
@@ -127,15 +128,15 @@ class ForexDataExtractor:
 
             response = HtmlResponse(url=page.url, body=html_content.encode(), encoding='utf-8')
 
-            headers = response.css('table thead tr th::text').getall()
+            headers = response.css(config.scraper.SELECTORS['table_headers']).getall()
             headers = [header.strip() for header in headers if header.strip()]
 
             print('Extracting historical data rows')
-            rows = response.css('div.table-container > table.table > tbody tr')
+            rows = response.css(config.scraper.SELECTORS['table_rows'])
             
             for row in rows:
-                date_text = row.css('td:nth-child(1)::text').get()
-                close_price = row.css('td:nth-child(5)::text').get()
+                date_text = row.css(config.scraper.SELECTORS['date_cell']).get()
+                close_price = row.css(config.scraper.SELECTORS['close_price_cell']).get()
                 
                 if not date_text or not close_price:
                     continue

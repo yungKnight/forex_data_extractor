@@ -6,8 +6,9 @@ from models import (
     ForexExtractionResult, ExtractionRequest, 
     FileOperationResult, OutputFormat
 )
+from config import config
 
-EXTRACTED_DATA_DIR = "Extracted_Data"
+EXTRACTED_DATA_DIR = config.files.DEFAULT_OUTPUT_DIR
 os.makedirs(EXTRACTED_DATA_DIR, exist_ok=True)
 
 class ForexDataExporter:
@@ -23,7 +24,7 @@ class ForexDataExporter:
         Args:
             output_directory (str): Directory where files will be saved
         """
-        self.output_directory = output_directory
+        self.output_directory = config.files.DEFAULT_OUTPUT_DIR
         os.makedirs(self.output_directory, exist_ok=True)
     
     async def export_result(
@@ -91,11 +92,11 @@ class ForexDataExporter:
             
             rows_written = 0
             
-            with open(full_path, mode=mode, newline='') as file:
+            with open(full_path, mode=mode, newline=config.files.CSV_NEWLINE) as file:
                 writer = csv.writer(file)
                 
                 if not file_exists:
-                    writer.writerow(['Date', 'Close'])
+                    writer.writerow(config.files.CSV_HEADERS)
                     
                 csv_rows = result.to_csv_rows()
                 for row_data in csv_rows:
@@ -163,7 +164,9 @@ class ForexDataExporter:
                     pass
             
             with open(full_path, 'w') as file:
-                json.dump(json_data, file, indent=2, ensure_ascii=False)
+                json.dump(json_data, file, 
+                     indent=config.files.JSON_INDENT, 
+                     ensure_ascii=config.files.JSON_ENSURE_ASCII)
             
             file_size = os.path.getsize(full_path) if os.path.exists(full_path) else 0
             file_size_mb = file_size / 1024
@@ -203,6 +206,9 @@ class ForexDataExporter:
             if not filename.endswith(f'.{extension}'):
                 filename = f"{filename}.{extension}"
         else:
+            base_name = config.files.DEFAULT_FILENAME_TEMPLATE.format(
+                currency_pair=request.currency_pair
+            )
             filename = request.get_default_filename(extension)
         
         return filename
