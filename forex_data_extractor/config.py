@@ -50,8 +50,8 @@ class DateConfig:
 class FileConfig:
     """Configuration for file operations and output."""
     
-    DEFAULT_OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Extracted_Data")
-    
+    DEFAULT_OUTPUT_DIR = os.path.join(os.getcwd(), "Extracted_Data")
+
     @classmethod
     def ensure_output_dir(cls, path: str = None) -> str:
         """Ensure the output directory exists and return its path."""
