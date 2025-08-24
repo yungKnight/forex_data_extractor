@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, validator, model_validator
-from config import config
+from .config import config
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple, Literal
 from decimal import Decimal
@@ -86,7 +86,7 @@ class ExtractionRequest(BaseModel):
     
     def to_url_params(self) -> Dict[str, Any]:
         """Convert to URL parameters for Yahoo Finance"""
-        from utils import date_to_unix
+        from .utils import date_to_unix
         
         return {
             'currency_pair': self.currency_pair,

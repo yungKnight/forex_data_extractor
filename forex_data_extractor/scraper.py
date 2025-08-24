@@ -6,13 +6,13 @@ from typing import List, Optional
 from playwright.async_api import async_playwright
 from scrapy.http import HtmlResponse
 from pydantic import ValidationError
-from models import ( FileOperationResult,
+from .models import ( FileOperationResult,
     ExtractionRequest, ForexExtractionResult, ExtractionMetadata, 
     PriceDataPoint, create_extraction_request
 )
-from config import config
-from utils import date_to_unix, parse_date_string
-from export import ForexDataExporter
+from .config import config
+from .utils import date_to_unix, parse_date_string
+from .export import ForexDataExporter
 
 class ForexDataExtractor:
     """
@@ -231,7 +231,7 @@ async def get_forex_data(
         return await extractor.extract_forex_data(request)
         
     except ValidationError as e:
-        from models import ExtractionMetadata
+        from .models import ExtractionMetadata
         
         metadata = ExtractionMetadata(
             currency_pair=currency_pair,
@@ -261,7 +261,7 @@ def fetch_forex_data(
     Synchronous wrapper around get_forex_data.
     Accepts datetime objects or strings (format: 'MMM DD, YYYY') for dates.
     """
-    from utils import parse_date_string
+    from .utils import parse_date_string
 
     if isinstance(start_date, str):
         start_date = parse_date_string(start_date)

@@ -14,8 +14,7 @@ from .models import (
     ExtractionMetadata,
     FileOperationResult,
     OutputFormat,
-    create_extraction_request,
-    create_result_from_tuples
+    create_extraction_request
 )
 from .utils import (
     parse_date_string,
@@ -49,8 +48,7 @@ __all__ = [
     "fetch_forex_data",
     "get_forex_data",
     "create_extraction_request",
-    "create_result_from_tuples",
-    
+
     # Utilities
     "parse_date_string",
     "date_to_unix", 

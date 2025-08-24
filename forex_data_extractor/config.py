@@ -121,7 +121,7 @@ class LoggingConfig:
 class AppConfig:
     """Main application configuration that aggregates all settings."""
     
-    APP_NAME = "Forex Data Scraper"
+    APP_NAME = "Forex Data Extractor"
     APP_VERSION = "1.0.0"
     APP_DESCRIPTION = "A tool for scraping historical forex data from Yahoo Finance"
     

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from config import config
+from .config import config
 
 def validate_single_date(
     date: datetime, 

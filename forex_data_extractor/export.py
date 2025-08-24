@@ -2,11 +2,11 @@ import os
 import json
 import csv
 from typing import List
-from models import (
+from .models import (
     ForexExtractionResult, ExtractionRequest, 
     FileOperationResult, OutputFormat
 )
-from config import config
+from .config import config
 
 EXTRACTED_DATA_DIR = config.files.DEFAULT_OUTPUT_DIR
 os.makedirs(EXTRACTED_DATA_DIR, exist_ok=True)
