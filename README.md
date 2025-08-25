@@ -1,6 +1,6 @@
 # Forex Data Extractor
 
-![Forex Data Extractor Banner](https://via.placeholder.com/800x200/1a1a2e/ffd700?text=Forex+Data+Extractor+%7C+Professional+Financial+Data+Scraping)
+![Forex Data Extractor Banner](./images/data_extractor.png)
 
 [![PyPI version](https://badge.fury.io/py/forex-data-extractor.svg)](https://badge.fury.io/py/forex-data-extractor)
 [![Python versions](https://img.shields.io/pypi/pyversions/forex-data-extractor.svg)](https://pypi.org/project/forex-data-extractor/)
