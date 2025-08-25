@@ -6,4 +6,4 @@ extracted_data/
 *.egg-info/
 build/
 dist/
-test_env/
+test*/

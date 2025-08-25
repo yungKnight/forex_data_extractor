@@ -101,23 +101,6 @@ class CLIConfig:
     SUCCESS_SYMBOL = "✓"
     ERROR_SYMBOL = "✗"
 
-class LoggingConfig:
-    """Configuration for logging (future enhancement)."""
-    
-    # Log levels
-    DEFAULT_LOG_LEVEL = "INFO"
-    DEBUG_LOG_LEVEL = "DEBUG"
-    
-    # Log format
-    LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-    
-    # Log file settings
-    LOG_DIR = "logs"
-    LOG_FILENAME = "forex_scraper.log"
-    MAX_LOG_SIZE = 10 * 1024 * 1024
-    BACKUP_COUNT = 5
-
 class AppConfig:
     """Main application configuration that aggregates all settings."""
     
@@ -130,7 +113,6 @@ class AppConfig:
     files = FileConfig()
     validation = ValidationConfig()
     cli = CLIConfig()
-    logging = LoggingConfig()
     
     @classmethod
     def get_app_info(cls) -> dict:
