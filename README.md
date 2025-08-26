@@ -21,7 +21,6 @@ A robust, type-safe Python package for extracting historical forex data from Yah
 - [Use Cases](#use-cases)
 - [API Reference](#api-reference)
 - [Screenshots](#screenshots)
-- [Comparison](#comparison)
 - [Configuration](#configuration)
 - [License](#license)
 - [Contributing](#contributing)
@@ -278,31 +277,13 @@ All data models use **Pydantic** for runtime validation and type safety:
 
 ## Screenshots
 
-### Interactive CLI Mode
-![Interactive CLI Screenshot](https://via.placeholder.com/600x400/2d3748/ffffff?text=Interactive+CLI+Mode+Screenshot)
+### Interactive CLI Mode And Data Output Examples
+![Interactive CLI Screenshot](./images/forex-extractor.gif)
 *The interactive CLI guides users through currency pair selection, date ranges, and output format choices*
 
 ### Command Line Usage
-![Command Line Usage](https://via.placeholder.com/600x300/1a202c/ffffff?text=Command+Line+Usage+Screenshot)  
+![Command Line Usage](./images/cli-usage.jpg)
 *Direct command-line execution with comprehensive help and error messages*
-
-### Data Output Examples  
-![CSV Output Example](https://via.placeholder.com/600x350/f7fafc/2d3748?text=CSV+Output+Example)
-*Clean, professional CSV output with proper date formatting and decimal precision*
-
-## Comparison
-
-| Feature | Forex Data Extractor | yfinance | investpy | Alpha Vantage API |
-|---------|---------------------|----------|-----------|-------------------|
-| **Type Safety** | ✅ Pydantic Models | ❌ Basic | ❌ Basic | ❌ Basic |
-| **Async Support** | ✅ Full async/await | ❌ Sync only | ❌ Sync only | ✅ Some |
-| **Data Validation** | ✅ Comprehensive | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited |
-| **Error Handling** | ✅ Robust | ⚠️ Basic | ⚠️ Basic | ✅ Good |
-| **CLI Interface** | ✅ Professional | ❌ None | ❌ None | ❌ None |
-| **Export Formats** | ✅ CSV, JSON, Both | ⚠️ Limited | ⚠️ Limited | ✅ JSON |
-| **Date Flexibility** | ✅ Multiple formats | ✅ Good | ✅ Good | ⚠️ Limited |
-| **Free Usage** | ✅ Unlimited | ✅ Unlimited | ⚠️ Limited | ⚠️ API limits |
-| **Decimal Precision** | ✅ Financial-grade | ⚠️ Float | ⚠️ Float | ✅ Good |
 
 ## Configuration
 
@@ -329,23 +310,9 @@ config.dates.MIN_END_DATE = datetime(2010, 1, 1)  # Allow older data
 config.cli.DEFAULT_OUTPUT_FORMAT = "json"
 ```
 
-### Environment Variables
-
-Set environment variables for system-wide configuration:
-
-```bash
-export FOREX_OUTPUT_DIR="/data/forex"
-export FOREX_DEFAULT_FORMAT="json"
-export FOREX_BROWSER_HEADLESS="true"
-```
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-Contributions are welcome! Here's how you can help:
 
 ### Development Setup
 ```bash
@@ -354,22 +321,10 @@ cd forex_data_extractor
 pip install -e ".[dev]"
 ```
 
-### Running Tests
-```bash
-pytest tests/ -v
-```
-
-### Code Quality
-```bash
-black forex_data_extractor/
-flake8 forex_data_extractor/
-mypy forex_data_extractor/
-```
-
 ### Contributing Guidelines
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
+3. Commit your changes (`git commit -m 'Your_feature_description'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
@@ -383,8 +338,6 @@ Please ensure all tests pass and code follows the project's style guidelines.
 - **Scrapy** for the powerful and flexible scraping framework
 - **Open Source Community** for inspiration and continuous improvement
 
-Special thanks to the financial data community for feedback and feature suggestions.
-
 ## Contact
 
 **Developer**: kennery  
@@ -395,7 +348,7 @@ Special thanks to the financial data community for feedback and feature suggesti
 ### Support & Issues 
 - 📖 **Documentation**: [Project Wiki](https://github.com/yungKnight/forex_data_extractor#readme)
 - ⭐ **Show Support**: Star the repository if you find it helpful!
-
+- **Report Issues**: Contact developer to report bug or suggest features, thanks.
 ---
 
 Built with ❤️ for the financial data community. Happy trading! 📈
