@@ -12,7 +12,7 @@ def read_readme():
     except FileNotFoundError:
         return "A tool for scraping historical forex data from Yahoo Finance"
 
-__version__ = "1.0.1"
+__version__ = "1.0.0"
 
 setup(
     name="forex-data-extractor",
